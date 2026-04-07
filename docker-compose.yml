@@ -2,26 +2,61 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15
+    image: postgres:15-alpine
+    container_name: innofocus-db
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
       POSTGRES_DB: innofocus
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d innofocus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - innofocus-network
 
   backend:
     build: ./backend
+    container_name: innofocus-backend
+    environment:
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434/v1}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     extra_hosts:
-      - "host.docker.internal:host-gateway" # Позволяет контейнеру видеть Ollama на хосте VM
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - innofocus-network
 
   frontend:
     build: ./frontend
+    container_name: innofocus-frontend
+    environment:
+      BACKEND_URL: http://backend:8000
     ports:
       - "8501:8501"
     depends_on:
       - backend
+    networks:
+      - innofocus-network
+
+volumes:
+  postgres_data:
+
+networks:
+  innofocus-network:
+    driver: bridge
