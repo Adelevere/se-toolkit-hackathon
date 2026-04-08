@@ -2,112 +2,57 @@ import streamlit as st
 import requests
 import os
 
-# Configuration
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://backend:8000")
+USER_ID = "streamlit-user"
 
-st.set_page_config(
-    page_title="AI Smart Planner",
-    page_icon="🎯",
-    layout="wide"
-)
-
+st.set_page_config(page_title="AI Smart Planner", page_icon="🎯", layout="wide")
 st.title("🎯 AI Smart Planner")
-st.markdown("Transform your brain dump into a structured, prioritized task list using AI")
 
-# Sidebar
-with st.sidebar:
-    st.header("About")
-    st.info("This app uses GPT-4 to analyze your text and extract actionable tasks with priorities and subtasks.")
-    
-    if st.button("Load Sample Tasks"):
-        st.session_state.show_sample = True
-    
-    if st.button("Clear All"):
-        st.session_state.show_sample = False
-        if 'parsed_tasks' in st.session_state:
-            del st.session_state['parsed_tasks']
-        st.rerun()
+def load_tasks():
+    try:
+        resp = requests.get(f"{API_BASE_URL}/tasks/all?user_id={USER_ID}", timeout=10)
+        return resp.json().get("tasks", []) if resp.status_code == 200 else []
+    except:
+        return []
 
-# Main content
-tab1, tab2 = st.tabs(["✨ Parse Tasks", "📋 Sample Tasks"])
-
-with tab1:
-    st.header("Parse Your Tasks")
-    st.markdown("Enter your unstructured thoughts, and AI will organize them into prioritized tasks.")
+def render():
+    tasks = load_tasks()
     
-    user_input = st.text_area(
-        "Your brain dump:",
-        height=200,
-        placeholder="Example: I need to finish the lab report by Friday, study for the midterm next week, maybe update my portfolio if I have time, and I should also read that research paper for the seminar on Monday..."
-    )
+    st.header("✨ Parse & Add Tasks")
+    txt = st.text_area("Your brain dump:", height=100, placeholder="I need to finish lab by Friday...")
     
-    col1, col2, col3 = st.columns([1, 1, 3])
-    with col1:
-        parse_button = st.button("🚀 Parse Tasks", type="primary", use_container_width=True)
-    
-    if parse_button or st.session_state.get('processing', False):
-        if not user_input.strip():
-            st.error("Please enter some text to parse.")
-        else:
-            with st.spinner("🤖 AI is analyzing your text..."):
+    if st.button("🚀 Parse & Add"):
+        if txt.strip():
+            with st.spinner("Analyzing..."):
                 try:
-                    response = requests.post(
-                        f"{API_BASE_URL}/tasks/parse",
-                        json={"text": user_input, "user_id": "streamlit-user"},
-                        timeout=30
-                    )
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        st.session_state['parsed_tasks'] = data['tasks']
-                        st.success(f"✅ Successfully parsed {data['total_count']} tasks!")
+                    r = requests.post(f"{API_BASE_URL}/tasks/parse", json={"text": txt, "user_id": USER_ID}, timeout=120)
+                    if r.status_code == 200:
+                        st.success(f"Added {r.json()['total_count']} tasks!")
                     else:
-                        st.error(f"Error: {response.json().get('detail', 'Unknown error')}")
-                
-                except requests.exceptions.ConnectionError:
-                    st.error("❌ Cannot connect to API. Make sure the backend is running.")
+                        st.error(r.json().get("detail", "Error"))
                 except Exception as e:
-                    st.error(f"❌ Error: {str(e)}")
+                    st.error(str(e))
     
-    # Display parsed tasks
-    if 'parsed_tasks' in st.session_state:
-        st.subheader(f"📊 Your Structured Tasks ({len(st.session_state['parsed_tasks'])})")
-        
-        for idx, task in enumerate(st.session_state['parsed_tasks'], 1):
-            priority_color = {
-                "high": "🔴",
-                "medium": "🟡",
-                "low": "🟢"
-            }.get(task['priority'], "⚪")
-            
-            with st.expander(f"{priority_color} **{task['title']}** - Priority: {task['priority'].upper()}", expanded=True):
-                if task.get('deadline'):
-                    st.caption(f"📅 Deadline: {task['deadline']}")
-                
-                if task.get('subtasks'):
-                    st.markdown("**Subtasks:**")
-                    for subtask in task['subtasks']:
-                        st.checkbox(subtask['title'], value=subtask.get('completed', False), key=f"task{idx}_{subtask['title']}")
-
-with tab2:
-    st.header("Sample Tasks")
-    st.markdown("Click the button in the sidebar to load sample tasks for testing.")
+    st.write(f"**You have {len(tasks)} tasks:**")
     
-    if st.session_state.get('show_sample', False):
-        with st.spinner("Loading sample tasks..."):
-            try:
-                response = requests.get(f"{API_BASE_URL}/tasks/mock", timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    st.session_state['parsed_tasks'] = data['tasks']
-                    st.success(f"Loaded {data['total_count']} sample tasks!")
+    if tasks:
+        for t in tasks:
+            status = "✅ " if t.get("completed") else ""
+            col1, col2, col3 = st.columns([4, 1, 1])
+            with col1:
+                st.markdown(f"{status}**{t.get('title', 'Task')}** ({t.get('priority', '-')})")
+            with col2:
+                if not t.get("completed"):
+                    key = f"done_{t['id']}"
+                    if st.button("Done", key=key):
+                        requests.put(f"{API_BASE_URL}/tasks/{t['id']}/complete")
+                        st.rerun()
+            with col3:
+                key = f"del_{t['id']}"
+                if st.button("Delete", key=key):
+                    requests.delete(f"{API_BASE_URL}/tasks/{t['id']}")
                     st.rerun()
-                else:
-                    st.error("Failed to load sample tasks")
-            except Exception as e:
-                st.error(f"❌ Error: {str(e)}")
+    else:
+        st.info("No tasks. Add some above!")
 
-# Footer
-st.markdown("---")
-st.markdown("Built with ❤️ using FastAPI + Streamlit + OpenAI GPT-4")
+render()

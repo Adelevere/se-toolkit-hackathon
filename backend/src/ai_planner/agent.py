@@ -1,73 +1,107 @@
 """LLM Agent for task extraction and prioritization."""
 
-from openai import AsyncOpenAI
-from typing import List
+import subprocess
 import json
-from ai_planner.settings import settings
+import re
+import os
+from typing import List
 from ai_planner.models import TaskItem, SubTask, Priority
 
-SYSTEM_PROMPT = """You are an AI task planner assistant. Your job is to analyze unstructured natural language text and extract actionable tasks with priorities and subtasks.
+SYSTEM_PROMPT = """You are a JSON-only task extractor. You MUST respond with ONLY a JSON object, nothing else.
 
-When given a "brain dump" text, you should:
-1. Identify distinct tasks mentioned or implied
-2. Assign priority (high/medium/low) based on urgency cues and deadlines
-3. Break complex tasks into smaller subtasks
-4. Extract any mentioned deadlines or dates
-
-Return ONLY valid JSON in this exact format:
-{
-  "tasks": [
-    {
-      "title": "Task title",
-      "priority": "high|medium|low",
-      "subtasks": [{"title": "Subtask 1", "completed": false}],
-      "deadline": "YYYY-MM-DD or null"
-    }
-  ]
-}
+The JSON must have this exact structure:
+{"tasks": [{"title": "task name", "priority": "high or medium or low", "subtasks": [{"title": "subtask", "completed": false}], "deadline": "YYYY-MM-DD or null"}]}
 
 Rules:
-- Keep task titles concise and action-oriented
-- Use "high" for urgent/deadline-driven tasks, "medium" for important but not urgent, "low" for nice-to-have
-- Create 2-4 subtasks for complex tasks, 0-1 for simple tasks
-- If no deadline is mentioned, set deadline to null
-- Do not add extra text outside the JSON"""
-
-client = AsyncOpenAI(api_key=settings.openai_api_key)
+- Extract all tasks from the user input
+- Priority: high=urgent/close deadline, medium=important/not urgent, low=nice-to-have
+- Create 2-3 subtasks per task
+- If no deadline mentioned, use null
+- NO markdown, NO code blocks, NO explanations - ONLY JSON"""
 
 
 async def parse_tasks(text: str) -> List[TaskItem]:
-    """Parse unstructured text into structured tasks using LLM."""
+    """Parse unstructured text into structured tasks using Qwen CLI."""
     try:
-        response = await client.chat.completions.create(
-            model=settings.openai_model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text}
-            ],
-            temperature=0.3,
-            response_format={"type": "json_object"}
+        # Combine system prompt with user input
+        full_prompt = f"{SYSTEM_PROMPT}\n\nUser brain dump to analyze:\n{text}\n\nJSON response:"
+
+        # Write prompt to temp file to avoid shell escaping issues
+        prompt_file = "/tmp/qwen_prompt.txt"
+        with open(prompt_file, 'w') as f:
+            f.write(full_prompt)
+
+        result = subprocess.run(
+            f"HOME=/root qwen -p \"$(cat {prompt_file})\"",
+            capture_output=True,
+            text=True,
+            timeout=120,
+            shell=True,
+            env={**os.environ, "HOME": "/root"}
         )
 
-        content = response.choices[0].message.content
+        # Clean up temp file
+        try:
+            os.remove(prompt_file)
+        except:
+            pass
+
+        if result.returncode != 0:
+            raise ValueError(f"Qwen CLI error: {result.stderr}")
+
+        content = result.stdout.strip()
         if not content:
-            raise ValueError("Empty response from LLM")
+            raise ValueError("Empty response from Qwen")
 
-        data = json.loads(content)
+        # Try multiple JSON extraction strategies
+        json_str = None
+
+        # Strategy 1: Extract from ```json code block
+        json_match = re.search(r'```json\s*\n(.*?)\n```', content, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1).strip()
+
+        # Strategy 2: Extract from generic ``` code block
+        if not json_str:
+            json_match = re.search(r'```\s*\n(.*?)\n```', content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1).strip()
+
+        # Strategy 3: Find JSON object by matching braces
+        if not json_str:
+            start = content.find('{')
+            end = content.rfind('}')
+            if start != -1 and end != -1:
+                json_str = content[start:end+1]
+
+        if not json_str:
+            raise ValueError(f"No JSON found in response: {content[:300]}")
+
+        # Clean up JSON string
+        json_str = json_str.strip()
+
+        # Parse and validate
+        data = json.loads(json_str)
+        if "tasks" not in data:
+            raise ValueError(f"Response missing 'tasks' key: {json_str[:200]}")
+
         tasks = []
-
         for task_data in data.get("tasks", []):
             subtasks = [
                 SubTask(title=st["title"], completed=st.get("completed", False))
                 for st in task_data.get("subtasks", [])
+                if "title" in st
             ]
 
             tasks.append(TaskItem(
-                title=task_data["title"],
+                title=task_data.get("title", "Untitled Task"),
                 priority=Priority(task_data.get("priority", "medium")),
                 subtasks=subtasks,
                 deadline=task_data.get("deadline")
             ))
+
+        if not tasks:
+            raise ValueError("No tasks extracted from input")
 
         return tasks
 

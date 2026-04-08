@@ -1,6 +1,6 @@
 # AI Smart Planner
 
-An intelligent task management web application that uses an LLM agent to transform unstructured natural language into a structured, prioritized academic schedule.
+An intelligent task management web application that uses Qwen LLM to transform unstructured natural language into a structured, prioritized academic schedule.
 
 ## Product Context
 * **End-user:** University students managing multiple academic assignments and tight deadlines.
@@ -10,7 +10,7 @@ An intelligent task management web application that uses an LLM agent to transfo
 ## Architecture
 
 ```
-Browser → Streamlit Frontend → FastAPI Backend → OpenAI GPT-4o → Structured Tasks
+Browser → Streamlit Frontend → FastAPI Backend → Qwen API → Structured Tasks
                           ↓
                     PostgreSQL (V2)
 ```
@@ -21,7 +21,7 @@ Browser → Streamlit Frontend → FastAPI Backend → OpenAI GPT-4o → Structu
 
 **Prerequisites:**
 - Docker & Docker Compose
-- OpenAI API key
+- Qwen API key (from https://portal.qwen.ai)
 
 **Setup:**
 
@@ -34,18 +34,23 @@ cd se-toolkit-hackathon
 2. Create environment file:
 ```bash
 cp .env.docker.example .env.docker.secret
-# Edit .env.docker.secret and add your OPENAI_API_KEY
+# Edit .env.docker.secret and add your QWEN_API_KEY
 ```
 
-3. Start all services:
+3. Update your Qwen API key in `.env.docker.secret`:
+```bash
+QWEN_API_KEY=your-actual-qwen-api-key
+```
+
+4. Start all services:
 ```bash
 docker compose --env-file .env.docker.secret up -d
 ```
 
-4. Access the application:
+5. Access the application:
 - **Frontend:** http://localhost:8501
 - **Backend API:** http://localhost:8000
-- **API Docs (Swagger):** http://localhost:8000/docs
+- **API docs (Swagger):** http://localhost:8000/docs
 
 ### Version 2 — With database persistence
 
@@ -56,7 +61,7 @@ Same as V1, but tasks are now saved to PostgreSQL and persist across sessions.
 - **Backend:** FastAPI (Python 3.11)
 - **Frontend:** Streamlit
 - **Database:** PostgreSQL 16
-- **AI:** OpenAI GPT-4o API
+- **AI:** Qwen API (qwen-coder-plus model)
 - **Deployment:** Docker Compose
 
 ## Features
@@ -120,7 +125,7 @@ se-toolkit-hackathon/
 │   │   ├── main.py          # FastAPI app
 │   │   ├── settings.py       # Configuration
 │   │   ├── models.py         # Pydantic schemas
-│   │   ├── agent.py          # LLM agent
+│   │   ├── agent.py          # Qwen LLM agent
 │   │   └── routers/          # API routes
 │   ├── pyproject.toml
 │   └── Dockerfile
@@ -140,7 +145,7 @@ se-toolkit-hackathon/
 ```bash
 cd backend
 pip install -e ".[dev]"
-OPENAI_API_KEY=your-key python -m ai_planner.run
+QWEN_API_KEY=your-key python -m ai_planner.run
 ```
 
 **Frontend:**
@@ -149,11 +154,25 @@ pip install streamlit requests
 API_BASE_URL=http://localhost:8000 streamlit run frontend/app.py
 ```
 
+## Qwen API Configuration
+
+The application uses Qwen's API compatible with OpenAI SDK:
+
+- **API Base URL:** `https://portal.qwen.ai/v1`
+- **Default Model:** `qwen-coder-plus`
+- **Authentication:** API key via `QWEN_API_KEY` environment variable
+
+To get your Qwen API key:
+1. Visit https://portal.qwen.ai
+2. Navigate to API settings
+3. Generate your API key
+4. Add it to `.env.docker.secret`
+
 ## Troubleshooting
 
 ### Backend won't start
 - Check logs: `docker compose logs backend`
-- Verify OPENAI_API_KEY is set in `.env.docker.secret`
+- Verify QWEN_API_KEY is set in `.env.docker.secret`
 
 ### Frontend can't connect to API
 - Ensure backend is running: `curl http://localhost:8000/health`
@@ -162,3 +181,8 @@ API_BASE_URL=http://localhost:8000 streamlit run frontend/app.py
 ### PostgreSQL connection issues
 - Wait for health check: `docker compose ps`
 - Check logs: `docker compose logs postgres`
+
+### API returns 401 error
+- Verify your QWEN_API_KEY is valid
+- Check that the key has not expired
+- Ensure QWEN_API_BASE is set to `https://portal.qwen.ai/v1`

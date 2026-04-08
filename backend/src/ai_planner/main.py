@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from ai_planner.settings import settings
 from ai_planner.routers import tasks
+from ai_planner.database import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("AI Smart Planner starting up")
+    init_db()
     yield
     logger.info("AI Smart Planner shutting down")
 

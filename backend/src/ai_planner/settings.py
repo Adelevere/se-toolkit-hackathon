@@ -1,5 +1,7 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
+from typing import Optional
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -10,9 +12,12 @@ class Settings(BaseSettings):
     reload: bool = Field(default=False, alias="RELOAD")
     cors_origins: list[str] = Field(default=["*"], alias="CORS_ORIGINS")
 
-    # OpenAI API
-    openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
-    openai_model: str = Field(default="gpt-4o", alias="OPENAI_MODEL")
+    # Qwen API (OAuth authentication)
+    qwen_api_base: str = Field(default="https://portal.qwen.ai/v1", alias="QWEN_API_BASE")
+    qwen_model: str = Field(default="qwen3-coder-plus", alias="QWEN_MODEL")
+    
+    # OAuth credentials path
+    qwen_creds_file: Path = Field(default=Path.home() / ".qwen" / "oauth_creds.json", alias="QWEN_CREDS_FILE")
 
     # Database (V2)
     db_host: str = Field(default="localhost", alias="DB_HOST")
