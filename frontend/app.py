@@ -17,10 +17,10 @@ def load_tasks():
 
 def render():
     tasks = load_tasks()
-    
+
     st.header("✨ Parse & Add Tasks")
     txt = st.text_area("Your brain dump:", height=100, placeholder="I need to finish lab by Friday...")
-    
+
     if st.button("🚀 Parse & Add"):
         if txt.strip():
             with st.spinner("Analyzing..."):
@@ -32,15 +32,29 @@ def render():
                         st.error(r.json().get("detail", "Error"))
                 except Exception as e:
                     st.error(str(e))
-    
-    st.write(f"**You have {len(tasks)} tasks:**")
-    
+
+    # Sort: active first, then by priority (high→medium→low), then by deadline
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    tasks.sort(key=lambda t: (
+        t.get("completed", False),
+        priority_order.get(t.get("priority", "medium"), 1),
+        t.get("deadline") or "9999-99-99"
+    ))
+
+    st.write(f"**You have {len(tasks)} tasks** (sorted by priority):")
+
     if tasks:
         for t in tasks:
             status = "✅ " if t.get("completed") else ""
+            priority_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(t.get("priority"), "⚪")
+            deadline = f"📅 {t['deadline']}" if t.get("deadline") else ""
+
             col1, col2, col3 = st.columns([4, 1, 1])
             with col1:
-                st.markdown(f"{status}**{t.get('title', 'Task')}** ({t.get('priority', '-')})")
+                line = f"{status}{priority_icon} **{t.get('title', 'Task')}**"
+                if deadline:
+                    line += f" — {deadline}"
+                st.markdown(line)
             with col2:
                 if not t.get("completed"):
                     key = f"done_{t['id']}"
