@@ -2,7 +2,7 @@
 
 An intelligent task management web application that uses Qwen AI to transform unstructured natural language into a structured, prioritized academic schedule.
 ## Demo
-> "C:\Users\adeli\OneDrive\Pictures\Screenshots\Снимок экрана 2026-04-09 220128.png"
+> C:\Users\adeli\OneDrive\Pictures\Screenshots\Снимок экрана 2026-04-09 220128.png
 ## Project Context
 * **End-user:** University students managing multiple academic assignments and tight deadlines.
 * **Problem:** Cognitive overload and difficulty prioritizing tasks from unstructured course materials.
